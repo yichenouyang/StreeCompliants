@@ -1,0 +1,355 @@
+<html>
+<style>
+	body {
+            font-family: Helvetica, Arial, sans-serif
+        }
+    h1 {
+            background-color: #2a5599;
+            color: #ffffff;
+            padding: 5px;
+        }
+	
+    .mainView {
+        display: grid;
+		grid-template-columns: 35% 65%;
+		grid-template-rows: auto;
+		grid-column-gap:50px;
+		grid-row-gap: 5px;
+        }
+	
+	.legend rect {
+  		fill:white;
+  		stroke:black;
+		}
+	
+    #barchart{
+        border: 1px solid #000;
+		padding: 5px;
+		margin: 1%;
+        }	
+	#piechart{
+        border: 1px solid #000;
+		padding: 5px;
+		margin: 1%;
+        }	
+	
+	#map{
+		border: 1px solid #000;
+  		
+		grid-column-start: 2;
+        grid-column-end: 3;
+		grid-row-start: 1;
+        grid-row-end: 3;
+	}
+	#tooltip1{
+		position:absolute;
+		width:200px;
+		height:auto;
+		padding:10px;
+		background-color: antiquewhite;
+		-webkit-border-radius: 10px;
+		-moz-border-radius: 10px;
+		border-radius: 10px;
+		-webkit-box-shadow: 4px 4px 10px rgba(0, 0, 0, 0.4);
+		-moz-box-shadow: 4px 4px 10px rgba(0, 0, 0, 0.4); 
+		box-shadow: 4px 4px 10px rgba(0, 0, 0, 0.4); 
+		pointer-events: none;
+	}
+	#tooltip1.hidden{
+		display: none;
+	}
+	#tooltip1 p{
+		margin:0;
+		font-family: sans-serif;
+		font-size: 16px;
+		line-height: 20px;
+	}
+   	#tooltip2{
+        border:solid 1px black;
+        padding: 5px;
+        position:absolute;
+        display: none;
+        background-color: white;
+		pointer-events: none;
+	}
+	
+</style>
+
+<body>
+ <h1>Street Compliants in Manhattan</h1>	
+ <div class="mainView">
+	 <div>
+		 <h2>Numbers</h2>
+         <svg id ="barchart" height ="200" width ="500">	
+			 <g class = "body"></g>/>
+			 
+    	 </svg>
+		 <svg id = "piechart" height ="200" width="500" style = "transform: translate(0px,10px)">
+			 <g class = "body"></g> 
+			 
+    	 </svg> 
+	 </div>
+	 <div >
+         <h2>Map</h2>
+         <svg id="map" height="448" width="800"></svg>
+		 
+     </div> 
+</div>
+<div id = "tooltip1" class ="hidden">
+	<p1><strong>Street Name:</strong></p1>
+	<p1><span id ='street'></span></p1><br/>
+	<p2><strong>Number of Cases:</strong></p2>
+	<p2><span id ='count'></span></p2><br/>
+</div>
+<div id = "tooltip2">Tooltip</div>	
+</body>
+<script src='https://api.mapbox.com/mapbox-gl-js/v0.53.0/mapbox-gl.js'></script>	
+<script src="https://d3js.org/d3.v5.min.js"></script>
+
+<script>
+
+	
+    let width = 500
+    let height= 200
+	let margin= {left:5, bottom:5, right:5, top:5}
+        
+    let bodyWidth = width - margin.left - margin.right
+    let bodyHeight = height - margin.top - margin.bottom
+	
+	let selectedStreet = undefined;
+	
+	d3.csv("streetdata.csv").then((data)=>{
+		data = prepareData(data)
+        drawBarchart(data)
+		drawPiechart(data[0])
+    })
+
+	
+    function prepareData(data) {
+        return data.map(d => {
+            let category = Object.keys(d).filter(k => !isNaN(+d[k]))
+            
+			categoryf=category.slice(0,6)
+			let ratio = categoryf.map(c=>({
+				type:c,
+				count:d[c]
+			}))
+			d.ratio = ratio
+			
+            return d;
+        })
+    }	
+	
+	//barchart
+	function drawBarchart(data){
+		let barchart = d3.select("#barchart")
+		let xScale = d3.scaleBand()
+            .range([0, bodyWidth])
+            .domain(data.map(d => d.street))
+            .padding(0.2)
+      
+        let yScale = d3.scaleLinear()
+            .range([bodyHeight, 0])
+            .domain([0, d3.max(data, d => +d.count)])
+		
+		let colorScale = d3.scaleOrdinal()
+            .range(d3.schemePaired)
+            .domain(data.map(d => d.street))
+		
+		barChartbody = barchart.select(".body")
+            .attr("transform", `translate(${margin.left},${margin.bottom})`)
+            .selectAll("rect")
+            .data(data)
+		
+		barChartbody.enter()
+            .append("rect")
+            .attr("width",xScale.bandwidth())
+            .attr("height",d=> bodyHeight-yScale(+d.count))
+            .attr("y", d=> yScale(+d.count))
+            .attr("x", d=> xScale(d.street))
+			.attr("fill", colorScale)
+			.attr("opacity",0.5)
+ 
+			.on("mouseover", d=>{
+				 var tx = d3.event.clientX
+                 var ty = d3.event.clientY
+                 d3.select("#tooltip1")
+				.style("left", tx)
+				.style("top", ty)
+				.select("#street")
+				.text(d.street)
+			    d3.select("#count")
+				.text(d.count)					
+				d3.select("#tooltip1")
+				.classed("hidden",false);
+
+				selectedStreet = d.street
+				drawBarchart(data)
+				drawPiechart(d)
+		})	.on("mouseout",function(d){
+                d3.select("#tooltip1")
+                .classed("hidden",true)
+                    })
+			.merge(barChartbody)
+			.attr("fill", d => d.street === selectedStreet ? "orange" : colorScale)
+		
+	}	
+	//tooltip function
+	function showTooltip(text, coords){
+        d3.select("#tooltip2")
+			.text(text)
+            .style("display", "block")
+            .style("top",coords[1])
+            .style("left",coords[0])
+	
+       }
+		
+	//pie chart
+	function drawPiechart(data){
+			
+    	let piechart = d3.select("#piechart")
+		
+		data = data.ratio
+	
+		let pie = d3.pie()
+            .value(d => d.count);
+        
+        let colorScale = d3.scaleOrdinal()
+            .range(d3.schemePaired)
+            .domain(data.map(d => d.type))
+       
+        let arc = d3.arc()
+            .outerRadius(bodyHeight / 2)
+            .innerRadius(35)
+		
+		pieChartbody = piechart.select(".body")
+            .attr("transform", "translate(150, 100)")
+            .selectAll(".arc")
+            .data(pie(data))
+			.enter()
+			
+           
+        pieChartbody.append("path")
+            .attr("d", arc)
+            .attr("fill", d => {
+                return colorScale(d.data.type)
+            })
+			.on("mouseenter", d=>{
+                showTooltip(d.data.count, [d3.event.clientX,d3.event.clientY])    
+        })
+			.on("mousemove", d=>{
+                showTooltip(d.data.count, [d3.event.clientX,d3.event.clientY])    
+        	})
+			.on("mouseleave", d=>{
+                d3.select("#tooltip2").style("display","none")
+        	})
+			
+	//legend
+		let legendRectSize = 20
+		let legendSpacing = 5
+		
+		
+		let legend = piechart.selectAll("legend")
+			.data(colorScale.domain()) 
+  			.enter() 
+  			.append('g') 
+			.attr('transform', function(d, i) {                   
+    			var height = legendRectSize + legendSpacing; 
+    			var offset =  height * colorScale.domain().length / 2; 
+    			var horz = 15 * legendRectSize; 
+    			var vert = i * height - offset+100;       
+      				return 'translate(' + horz + ',' + vert + ')'; //return translation       
+   				});
+		
+		legend.append('rect') 
+			.attr('width', legendRectSize)
+			.attr('height', legendRectSize)
+			.style('fill', colorScale)
+			.style('stroke', colorScale)
+		
+		legend.append('text')                                    
+  			.attr('x', legendRectSize + legendSpacing)
+  			.attr('y', legendRectSize - legendSpacing)
+  			.text(function(d) { return d; }); 	
+	}
+	
+	
+	//map
+	let map = d3.select("#map")
+	let base = map.append("g")
+	let streetbase = map.append("g")
+	let street = map.append("g")
+	
+
+	d3.json("base.json").then(drawmap)
+    function drawmap(mapInfo) {
+        let bodyHeight = 400
+        let bodyWidth = 400
+		let projection = d3.geoMercator()
+            .scale(160000)
+			.center([-74,40.77216])
+            .translate([bodyWidth / 2, bodyHeight / 2])
+
+    	let path = d3.geoPath()
+            .projection(projection);
+
+        base.selectAll("path")
+            .data(mapInfo.features)
+            .enter().append("path")
+            .attr("d", d => path(d))
+            .attr("stroke", "black")
+            .attr("fill", "none")
+    }  
+	
+	d3.json("streetbase.geojson").then(drawstreetbase)	
+    function drawstreetbase(Info1) {
+        let bodyHeight = 400
+        let bodyWidth = 400
+		let projection = d3.geoMercator()
+            .scale(160000)
+			.center([-74,40.77216])
+            .translate([bodyWidth / 2, bodyHeight / 2])
+
+    	let path = d3.geoPath()
+            .projection(projection);
+        street.selectAll("path")
+            .data(Info1.features)
+            .enter().append("path")
+            .attr("d", d => path(d))
+            .attr("stroke", "gray")
+            .attr("fill", "none")
+			.attr("opacity",0.3)
+    }
+	//street
+	
+	d3.json("street.geojson").then(drawstreet)	
+    function drawstreet(Info) {
+        let bodyHeight = 400
+        let bodyWidth = 400
+		let projection = d3.geoMercator()
+            .scale(160000)
+			.center([-74,40.77216])
+            .translate([bodyWidth / 2, bodyHeight / 2])
+
+    	let path = d3.geoPath()
+            .projection(projection);
+        street.selectAll("path")
+            .data(Info.features)
+            .enter().append("path")
+            .attr("d", d => path(d))
+            .attr("stroke", "red")
+            .attr("fill", "none")
+    }  	
+		
+		
+		
+	
+	
+	
+	
+	
+	
+	
+	
+	
+</script>
